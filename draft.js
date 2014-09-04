@@ -2,6 +2,14 @@ function EventEmitter() {}
 
 function State() {}
 
+var LT_VERSION = '0.0.1';
+var CURRENT_CONFIG = null;
+
+State.prototype.handle = function () {
+  'use strict';
+  throw new Error('Not implemented');
+};
+
 State.prototype.close = function () {
   'use strict';
   this._socket.disconnect();
@@ -25,6 +33,13 @@ function DisconnectedState() {
 
 DisconnectedState.prototype = Object.create(State.prototype);
 
+function PageUpdateState() {
+  'use strict';
+  State.call(this);
+}
+
+PageUpdateState.prototype = Object.create(State.prototype);
+
 
 function HandshakeState() {
   'use strict';
@@ -33,16 +48,26 @@ function HandshakeState() {
 
 HandshakeState.prototype = Object.create(State.prototype);
 
-
-function PageUpdateState() {
+HandshakeState.prototype.handle = function () {
   'use strict';
-  State.call(this);
-}
+  this._socket.emit('lt.handshake-version', LT_VERSION)
+    .then(function (data) {
+      if (this._compareVersions(data, LT_VERSION) >= 0) {
+        this._exchangeConfig(CURRENT_CONFIG);
+      } else {
+        throw new Error('Version not supported');
+      }
+    }.bind(this));
+};
 
-PageUpdateState.prototype = Object.create(State.prototype);
-
-//-handle
-//-close
+HandshakeState.prototype._exchangeConfig = function (config) {
+  'use strict';
+  this._socket.emit('lt.handshake-config', config)
+    .then(function (data) {
+      this.getClient().setConfig(data);
+      this.getClient().setState(new PageUpdateState());
+    }.bind(this));
+};
 
 
 function Client() {
@@ -74,4 +99,14 @@ Client.prototype.connect = function (socket) {
 Client.prototype.disconnect = function () {
   'use strict';
   this.getState().close();
+};
+
+Client.prototype.setConfig = function (config) {
+  'use strict';
+  this._config = config;
+};
+
+Client.prototype.getConfig = function () {
+  'use strict';
+  return this._config;
 };
